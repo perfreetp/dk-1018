@@ -11,11 +11,30 @@ import Collection from '@/components/Collection';
 import SettingsPage from '@/components/Settings';
 
 export default function App() {
-  const { isPlaying, currentPage, loadSaves } = useGameStore();
+  const { isPlaying, currentPage, loadSaves, autoSave, updatePatience, updateMakingProgress, updateEmployees, currentSave } = useGameStore();
 
   useEffect(() => {
     loadSaves();
   }, []);
+
+  useEffect(() => {
+    if (!isPlaying || !currentSave) return;
+    
+    const gameLoop = setInterval(() => {
+      updatePatience();
+      updateMakingProgress();
+      updateEmployees();
+    }, 1000);
+
+    const saveLoop = setInterval(() => {
+      autoSave();
+    }, 30000);
+
+    return () => {
+      clearInterval(gameLoop);
+      clearInterval(saveLoop);
+    };
+  }, [isPlaying, currentSave, updatePatience, updateMakingProgress, updateEmployees, autoSave]);
 
   if (!isPlaying) {
     return <MainMenu />;

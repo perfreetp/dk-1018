@@ -1,11 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { Cat, Heart, Moon, Zap, Plus, Bed, AlertTriangle } from 'lucide-react';
 
 export default function Dormitory() {
-  const { currentSave, hireEmployee, assignWork, restEmployee } = useGameStore();
+  const { currentSave, hireEmployee, assignWork, restEmployee, updateEmployees } = useGameStore();
   const [showHireModal, setShowHireModal] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState('');
+
+  useEffect(() => {
+    const energyInterval = setInterval(() => {
+      updateEmployees();
+    }, 200);
+    
+    return () => clearInterval(energyInterval);
+  }, [updateEmployees]);
 
   if (!currentSave) return null;
 
@@ -100,7 +108,7 @@ export default function Dormitory() {
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div
-                            className={`h-full transition-all duration-500 ${getEnergyColor(employee.energy)}`}
+                            className={`h-full transition-all duration-200 ${getEnergyColor(employee.energy)}`}
                             style={{ width: `${employee.energy}%` }}
                           />
                         </div>
@@ -158,7 +166,7 @@ export default function Dormitory() {
                 </div>
                 <div>
                   <h4 className="font-medium text-text">体力系统</h4>
-                  <p className="text-xs text-text-muted">工作会消耗体力，休息会恢复体力</p>
+                  <p className="text-xs text-text-muted">工作会消耗体力，休息会恢复体力（实时更新）</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">

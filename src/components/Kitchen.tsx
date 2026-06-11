@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { ingredients, recipes } from '@/data/gameData';
-import { ChefHat, Flame, Coffee, Lock, Plus, Check, Trash2, Play } from 'lucide-react';
+import { ChefHat, Flame, Coffee, Lock, Plus, Check, Trash2 } from 'lucide-react';
 
 export default function Kitchen() {
   const { 
@@ -10,14 +10,22 @@ export default function Kitchen() {
     makingDishes,
     addIngredientToStation, 
     clearStation, 
-    startMaking,
     unlockRecipe,
     upgradeStove,
     upgradeCoffeeMachine,
     addToInventory,
+    updateMakingProgress,
   } = useGameStore();
   
   const [showUnlockModal, setShowUnlockModal] = useState<string | null>(null);
+
+  useEffect(() => {
+    const progressInterval = setInterval(() => {
+      updateMakingProgress();
+    }, 100);
+    
+    return () => clearInterval(progressInterval);
+  }, [updateMakingProgress]);
 
   if (!currentSave) return null;
 
@@ -122,7 +130,7 @@ export default function Kitchen() {
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm text-text-muted">拖拽食材到这里</span>
+              <span className="text-sm text-text-muted">拖拽食材到这里 (凑齐配方自动开始制作)</span>
               <div className="flex gap-2">
                 <button
                   onClick={clearStation}
@@ -163,13 +171,7 @@ export default function Kitchen() {
                       <p className="text-sm text-text-muted">制作时间: {matchedRecipe.makeTime}秒</p>
                     </div>
                   </div>
-                  <button
-                    onClick={startMaking}
-                    className="cat-button flex items-center gap-2"
-                  >
-                    <Play size={16} />
-                    开始制作
-                  </button>
+                  <span className="text-sm text-success font-medium">配方匹配！</span>
                 </div>
               </div>
             )}
@@ -212,7 +214,7 @@ export default function Kitchen() {
                           </div>
                           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-accent transition-all duration-300"
+                              className="h-full bg-accent transition-all duration-100"
                               style={{ width: `${making.progress}%` }}
                             />
                           </div>

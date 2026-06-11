@@ -1,10 +1,21 @@
+import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { customers, recipes } from '@/data/gameData';
 import type { Order } from '@/types';
-import { ClipboardList, Clock, CheckCircle, Package, AlertCircle } from 'lucide-react';
+import { ClipboardList, Clock, CheckCircle, Package, AlertCircle, Timer } from 'lucide-react';
 
 export default function Orders() {
-  const { currentSave, completeOrder } = useGameStore();
+  const { currentSave, completeOrder, updatePatience } = useGameStore();
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const timerInterval = setInterval(() => {
+      updatePatience();
+      forceUpdate(n => n + 1);
+    }, 1000);
+    
+    return () => clearInterval(timerInterval);
+  }, [updatePatience]);
 
   if (!currentSave) return null;
   
@@ -37,6 +48,16 @@ export default function Orders() {
     if (percentage > 60) return 'bg-success';
     if (percentage > 30) return 'bg-warning';
     return 'bg-danger';
+  };
+
+  const formatTime = (patience: number) => {
+    const seconds = Math.ceil(patience);
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${seconds}秒`;
   };
 
   const pendingOrders = orders.filter((o: Order) => o.status === 'pending');
@@ -101,8 +122,13 @@ export default function Orders() {
                         
                         <div className="mt-2">
                           <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                            <span>配送时限</span>
-                            <span>{Math.round(patiencePercentage)}%</span>
+                            <div className="flex items-center gap-1">
+                              <Timer size={12} className="text-warning" />
+                              <span>配送时限</span>
+                            </div>
+                            <span className={`font-medium ${order.patience < 30 ? 'text-danger' : 'text-text'}`}>
+                              {formatTime(order.patience)}
+                            </span>
                           </div>
                           <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
                             <div
@@ -191,8 +217,13 @@ export default function Orders() {
                         
                         <div className="mt-2">
                           <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                            <span>耐心值</span>
-                            <span>{Math.round(patiencePercentage)}%</span>
+                            <div className="flex items-center gap-1">
+                              <Timer size={12} className="text-primary" />
+                              <span>耐心值</span>
+                            </div>
+                            <span className={`font-medium ${order.patience < 20 ? 'text-danger' : 'text-text'}`}>
+                              {formatTime(order.patience)}
+                            </span>
                           </div>
                           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div

@@ -18,6 +18,7 @@ interface GameStore {
   autoSave: () => void;
   
   setCurrentPage: (page: string) => void;
+  exitToMainMenu: () => void;
   
   addOrder: (customerId: string) => void;
   completeOrder: (orderId: string) => void;
@@ -224,6 +225,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ currentPage: page });
   },
   
+  exitToMainMenu: () => {
+    get().saveGame();
+    set({
+      isPlaying: false,
+      currentPage: 'main',
+      makingDishes: [],
+      stationIngredients: [],
+    });
+    get().loadSaves();
+  },
+  
   addOrder: (customerId) => {
     const currentSave = get().currentSave;
     if (!currentSave) return;
@@ -349,10 +361,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const inventory = { ...currentSave.inventory };
     inventory[ingredientId]--;
     
+    const newStationIngredients = [...get().stationIngredients, ingredientId];
+    
     set({
       currentSave: { ...currentSave, inventory },
-      stationIngredients: [...get().stationIngredients, ingredientId],
+      stationIngredients: newStationIngredients,
     });
+    
+    const matchedRecipe = recipes.find(r => {
+      if (!currentSave.unlockedRecipes.includes(r.id)) return false;
+      const sortedIngredients = [...newStationIngredients].sort();
+      const sortedRecipeIngredients = [...r.ingredients].sort();
+      return JSON.stringify(sortedIngredients) === JSON.stringify(sortedRecipeIngredients);
+    });
+    
+    if (matchedRecipe) {
+      const makingDish: MakingDish = {
+        recipeId: matchedRecipe.id,
+        progress: 0,
+        startTime: Date.now(),
+      };
+      
+      set({
+        makingDishes: [...get().makingDishes, makingDish],
+        stationIngredients: [],
+      });
+    }
     
     return true;
   },

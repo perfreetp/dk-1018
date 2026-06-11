@@ -1,31 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { customers, recipes } from '@/data/gameData';
 import type { Order } from '@/types';
-import { Coins, Star, Calendar, Users, Sparkles, Package, AlertCircle } from 'lucide-react';
+import { Coins, Star, Calendar, Users, Sparkles, Package, AlertCircle, Timer } from 'lucide-react';
 
 export default function Shop() {
   const { 
     currentSave, 
     addOrder, 
     completeOrder, 
-    autoSave, 
-    updatePatience, 
     nextDay, 
     triggerDeliveryOrder,
-    updateMakingProgress,
-    updateEmployees,
   } = useGameStore();
   const [showNotification, setShowNotification] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     if (!currentSave) return;
     
-    const gameLoop = setInterval(() => {
-      updatePatience();
-      updateMakingProgress();
-      updateEmployees();
-      
+    const orderInterval = setInterval(() => {
       const orders = currentSave.orders;
       if (Math.random() < 0.02 && orders.length < 5) {
         const unlockedCustomers = currentSave.unlockedCustomers || [];
@@ -37,26 +30,13 @@ export default function Shop() {
       if (Math.random() < 0.005) {
         triggerDeliveryOrder();
       }
+      forceUpdate(n => n + 1);
     }, 1000);
 
-    const saveLoop = setInterval(() => {
-      autoSave();
-    }, 30000);
-
     return () => {
-      clearInterval(gameLoop);
-      clearInterval(saveLoop);
+      clearInterval(orderInterval);
     };
-  }, [currentSave?.unlockedCustomers, currentSave]);
-
-  useEffect(() => {
-    if (!currentSave) return;
-    const completedOrders = currentSave.orders.filter((o: Order) => o.status === 'completed');
-    if (completedOrders.length > 0) {
-      setShowNotification('订单完成！💰');
-      setTimeout(() => setShowNotification(null), 2000);
-    }
-  }, [currentSave?.orders]);
+  }, [currentSave]);
 
   if (!currentSave) return null;
 
@@ -92,6 +72,16 @@ export default function Shop() {
     if (percentage > 60) return 'bg-success';
     if (percentage > 30) return 'bg-warning';
     return 'bg-danger';
+  };
+
+  const formatTime = (patience: number) => {
+    const seconds = Math.ceil(patience);
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${seconds}秒`;
   };
 
   return (
@@ -206,11 +196,22 @@ export default function Shop() {
                             <span>💰</span>
                           </div>
                         </div>
-                        <div className="patience-bar mt-2">
-                          <div
-                            className={`patience-fill ${getPatienceColor(order.patience, order.maxPatience)}`}
-                            style={{ width: `${patiencePercentage}%` }}
-                          />
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                            <div className="flex items-center gap-1">
+                              <Timer size={12} className={customer.isDelivery ? 'text-warning' : 'text-primary'} />
+                              <span>{customer.isDelivery ? '配送时限' : '耐心值'}</span>
+                            </div>
+                            <span className={`font-medium ${order.patience < (customer.isDelivery ? 30 : 20) ? 'text-danger' : 'text-text'}`}>
+                              {formatTime(order.patience)}
+                            </span>
+                          </div>
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 ${getPatienceColor(order.patience, order.maxPatience)}`}
+                              style={{ width: `${patiencePercentage}%` }}
+                            />
+                          </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {order.items.map((item, idx) => {

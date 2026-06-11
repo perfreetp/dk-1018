@@ -3,7 +3,7 @@ import { useGameStore } from '@/store/gameStore';
 import { Settings as SettingsIcon, Save, Home, Moon, Sun, AlertTriangle, RotateCcw } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { currentSave, saveGame, setDifficulty, deleteSave, setCurrentPage, loadSaves } = useGameStore();
+  const { currentSave, saveGame, setDifficulty, deleteSave, exitToMainMenu } = useGameStore();
   const [showConfirm, setShowConfirm] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
@@ -19,12 +19,6 @@ export default function SettingsPage() {
     if (confirm('确定要删除当前存档吗？此操作无法撤销！')) {
       deleteSave(currentSave.saveId);
     }
-  };
-
-  const handleReturnToMain = () => {
-    saveGame();
-    loadSaves();
-    setCurrentPage('main');
   };
 
   return (
@@ -129,7 +123,7 @@ export default function SettingsPage() {
           <div className="space-y-3 text-sm text-text-muted">
             <div className="flex items-start gap-2">
               <span className="text-lg">🍩</span>
-              <p>拖拽食材到制作台制作甜点，满足顾客订单获取金币</p>
+              <p>拖拽食材到制作台制作甜点，凑齐配方自动开始制作</p>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-lg">🐱</span>
@@ -152,7 +146,7 @@ export default function SettingsPage() {
 
         <div className="cat-card">
           <button
-            onClick={handleReturnToMain}
+            onClick={exitToMainMenu}
             className="w-full px-4 py-3 bg-gray-200 text-text rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-300 transition-colors"
           >
             <Home size={18} />
