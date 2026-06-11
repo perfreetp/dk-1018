@@ -34,6 +34,7 @@ export interface Order {
   tip: number;
   status: 'pending' | 'completed' | 'failed';
   createdAt: number;
+  isDelivery: boolean;
 }
 
 export interface Customer {
@@ -56,6 +57,7 @@ export interface Employee {
   isWorking: boolean;
   hourlyWage: number;
   avatar: string;
+  efficiency: number;
 }
 
 export interface Decoration {
@@ -86,6 +88,10 @@ export interface GameStats {
   dishesMade: number;
   tipsEarned: number;
   daysPlayed: number;
+  deliveryOrdersCompleted: number;
+  deliveryEarnings: number;
+  dineInOrdersCompleted: number;
+  dineInEarnings: number;
 }
 
 export interface DailyGoal {
@@ -114,6 +120,7 @@ export interface GameState {
   unlockedCustomers: string[];
   dailyGoals: DailyGoal[];
   inventory: Record<string, number>;
+  finishedDishes: Record<string, number>;
   stoveLevel: number;
   coffeeMachineLevel: number;
 }
@@ -127,4 +134,10 @@ export interface SaveFile {
   dayCount: number;
   difficulty: Difficulty;
   lastSave: number;
+}
+
+export interface MakingDish {
+  recipeId: string;
+  progress: number;
+  startTime: number;
 }

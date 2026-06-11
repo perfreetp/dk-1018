@@ -40,7 +40,7 @@ export const customers: Customer[] = [
 ];
 
 export const initialEmployees: Employee[] = [
-  { id: 'emp1', name: '喵大厨', type: 'chef', level: 1, energy: 100, maxEnergy: 100, isWorking: true, hourlyWage: 50, avatar: '👩🍳' },
+  { id: 'emp1', name: '喵大厨', type: 'chef', level: 1, energy: 100, maxEnergy: 100, isWorking: true, hourlyWage: 50, avatar: '👩🍳', efficiency: 1 },
 ];
 
 export const decorations: Decoration[] = [

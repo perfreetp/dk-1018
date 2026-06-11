@@ -1,52 +1,35 @@
 import { useGameStore } from '@/store/gameStore';
 import { customers, recipes } from '@/data/gameData';
-import { ClipboardList, Clock, Coins, CheckCircle, XCircle } from 'lucide-react';
+import type { Order } from '@/types';
+import { ClipboardList, Clock, CheckCircle, Package, AlertCircle } from 'lucide-react';
 
 export default function Orders() {
-  const { currentSave, completeOrder, makeDish } = useGameStore();
+  const { currentSave, completeOrder } = useGameStore();
 
   if (!currentSave) return null;
   
   const orders = currentSave.orders;
-
+  
   const handleServeOrder = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
+    const order = orders.find((o: Order) => o.id === orderId);
     if (!order) return;
 
-    let canServe = true;
-    for (const item of order.items) {
-      const recipe = recipes.find(r => r.id === item.itemId);
-      if (!recipe) {
-        canServe = false;
-        break;
-      }
-      
-      const inventory = currentSave.inventory;
-      for (const ingredient of recipe.ingredients) {
-        if (!inventory[ingredient] || inventory[ingredient] <= 0) {
-          canServe = false;
-          break;
-        }
-      }
-      
-      if (!canServe) break;
-    }
+    const canServe = order.items.every((item) => {
+      const currentCount = currentSave.finishedDishes[item.itemId] || 0;
+      return currentCount >= item.quantity;
+    });
 
     if (canServe) {
-      order.items.forEach(item => {
-        for (let i = 0; i < item.quantity; i++) {
-          makeDish(item.itemId);
-        }
-      });
       completeOrder(orderId);
     }
   };
 
   const getCustomerInfo = (customerId: string) => {
     if (customerId === 'delivery') {
-      return { name: '外卖订单', avatar: '📦' };
+      return { name: '外卖订单', avatar: '📦', isDelivery: true };
     }
-    return customers.find(c => c.id === customerId) || { name: '未知', avatar: '🐱' };
+    const customer = customers.find(c => c.id === customerId);
+    return { name: customer?.name || '未知', avatar: customer?.avatar || '🐱', isDelivery: false };
   };
 
   const getPatienceColor = (patience: number, maxPatience: number) => {
@@ -55,6 +38,10 @@ export default function Orders() {
     if (percentage > 30) return 'bg-warning';
     return 'bg-danger';
   };
+
+  const pendingOrders = orders.filter((o: Order) => o.status === 'pending');
+  const deliveryOrders = pendingOrders.filter((o: Order) => o.isDelivery);
+  const dineInOrders = pendingOrders.filter((o: Order) => !o.isDelivery);
 
   return (
     <div className="min-h-screen pb-20">
@@ -76,25 +63,114 @@ export default function Orders() {
             <div className="text-xs text-text-muted">已完成</div>
           </div>
           <div className="flex-1 cat-card text-center">
-            <div className="text-2xl font-bold text-danger">{currentSave.dayCount * 10 - currentSave.stats.totalCustomersServed}</div>
-            <div className="text-xs text-text-muted">失败</div>
+            <div className="text-2xl font-bold text-warning">{currentSave.stats.deliveryOrdersCompleted}</div>
+            <div className="text-xs text-text-muted">外卖</div>
           </div>
         </div>
+
+        {deliveryOrders.length > 0 && (
+          <section className="mb-6">
+            <h2 className="text-lg font-semibold text-text mb-3 flex items-center gap-2">
+              <Package size={20} className="text-warning" />
+              外卖订单 ({deliveryOrders.length})
+            </h2>
+            <div className="space-y-3">
+              {deliveryOrders.map((order: Order) => {
+                const customer = getCustomerInfo(order.customerId);
+                const patiencePercentage = (order.patience / order.maxPatience) * 100;
+                
+                return (
+                  <div key={order.id} className="cat-card border-2 border-warning/30">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full bg-warning/20 flex items-center justify-center text-2xl">
+                        {customer.avatar}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-text">{customer.name}</h3>
+                            <span className="px-2 py-0.5 bg-warning/20 text-warning rounded-full text-xs">
+                              外卖
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-sm">
+                            <span className="text-accent font-bold">+{order.tip}</span>
+                            <span>💰</span>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                            <span>配送时限</span>
+                            <span>{Math.round(patiencePercentage)}%</span>
+                          </div>
+                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 ${getPatienceColor(order.patience, order.maxPatience)}`}
+                              style={{ width: `${patiencePercentage}%` }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3">
+                          <p className="text-xs text-text-muted mb-2">订单内容:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {order.items.map((item, idx) => {
+                              const recipe = recipes.find(r => r.id === item.itemId);
+                              const hasEnough = (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity;
+                              return (
+                                <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${
+                                  hasEnough ? 'bg-success/20' : 'bg-danger/20'
+                                }`}>
+                                  <span className="text-xl">{recipe?.emoji}</span>
+                                  <div>
+                                    <div className={`text-sm font-medium ${hasEnough ? 'text-success' : 'text-danger'}`}>
+                                      {recipe?.name}
+                                    </div>
+                                    <div className="text-xs text-text-muted">x{item.quantity}</div>
+                                  </div>
+                                  {!hasEnough && <AlertCircle size={14} className="text-danger" />}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleServeOrder(order.id)}
+                      disabled={!order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)}
+                      className={`w-full mt-3 px-4 py-2 rounded-full font-medium flex items-center justify-center gap-2 transition-all ${
+                        order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)
+                          ? 'bg-warning text-white hover:bg-warning/90'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Package size={18} />
+                      配送订单
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="text-lg font-semibold text-text mb-3 flex items-center gap-2">
             <Clock size={20} className="text-primary" />
-            当前订单
+            堂食订单 ({dineInOrders.length})
           </h2>
           
-          {orders.length === 0 ? (
+          {dineInOrders.length === 0 ? (
             <div className="cat-card text-center py-8">
               <div className="text-4xl mb-2">📋</div>
-              <p className="text-text-muted">暂无订单</p>
+              <p className="text-text-muted">暂无堂食订单</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map(order => {
+              {dineInOrders.map((order: Order) => {
                 const customer = getCustomerInfo(order.customerId);
                 const patiencePercentage = (order.patience / order.maxPatience) * 100;
                 
@@ -107,11 +183,9 @@ export default function Orders() {
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h3 className="font-medium text-text">{customer.name}</h3>
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1 text-sm text-accent">
-                              <Coins size={14} />
-                              +{order.tip}
-                            </span>
+                          <div className="flex items-center gap-1 text-sm">
+                            <span className="text-accent">+{order.tip}</span>
+                            <span>💰</span>
                           </div>
                         </div>
                         
@@ -120,9 +194,9 @@ export default function Orders() {
                             <span>耐心值</span>
                             <span>{Math.round(patiencePercentage)}%</span>
                           </div>
-                          <div className="patience-bar">
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                              className={`patience-fill ${getPatienceColor(order.patience, order.maxPatience)}`}
+                              className={`h-full transition-all duration-500 ${getPatienceColor(order.patience, order.maxPatience)}`}
                               style={{ width: `${patiencePercentage}%` }}
                             />
                           </div>
@@ -133,13 +207,19 @@ export default function Orders() {
                           <div className="flex flex-wrap gap-2">
                             {order.items.map((item, idx) => {
                               const recipe = recipes.find(r => r.id === item.itemId);
+                              const hasEnough = (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity;
                               return (
-                                <div key={idx} className="flex items-center gap-2 bg-secondary/50 rounded-xl px-3 py-2">
+                                <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${
+                                  hasEnough ? 'bg-success/20' : 'bg-danger/20'
+                                }`}>
                                   <span className="text-xl">{recipe?.emoji}</span>
                                   <div>
-                                    <div className="text-sm font-medium text-text">{recipe?.name}</div>
+                                    <div className={`text-sm font-medium ${hasEnough ? 'text-success' : 'text-danger'}`}>
+                                      {recipe?.name}
+                                    </div>
                                     <div className="text-xs text-text-muted">x{item.quantity}</div>
                                   </div>
+                                  {!hasEnough && <AlertCircle size={14} className="text-danger" />}
                                 </div>
                               );
                             })}
@@ -148,15 +228,18 @@ export default function Orders() {
                       </div>
                     </div>
                     
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        onClick={() => handleServeOrder(order.id)}
-                        className="flex-1 cat-button flex items-center justify-center gap-2"
-                      >
-                        <CheckCircle size={18} />
-                        完成订单
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleServeOrder(order.id)}
+                      disabled={!order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)}
+                      className={`w-full mt-3 px-4 py-2 rounded-full font-medium flex items-center justify-center gap-2 transition-all ${
+                        order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)
+                          ? 'bg-primary text-white hover:bg-primary/90'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <CheckCircle size={18} />
+                      完成订单
+                    </button>
                   </div>
                 );
               })}
@@ -165,26 +248,24 @@ export default function Orders() {
         </section>
 
         <section className="mt-6">
-          <h2 className="text-lg font-semibold text-text mb-3">快速统计</h2>
+          <h2 className="text-lg font-semibold text-text mb-3">订单统计</h2>
           <div className="cat-card">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={18} className="text-success" />
-                  <span className="text-sm text-text-muted">今日完成</span>
+              <div className="p-4 bg-primary/10 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock size={18} className="text-primary" />
+                  <span className="text-sm text-text-muted">堂食订单</span>
                 </div>
-                <div className="text-xl font-bold text-success mt-1">
-                  {currentSave.dailyGoals[0]?.current || 0}
-                </div>
+                <div className="text-xl font-bold text-primary">{currentSave.stats.dineInOrdersCompleted}</div>
+                <div className="text-sm text-accent">{currentSave.stats.dineInEarnings} 💰</div>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <XCircle size={18} className="text-danger" />
-                  <span className="text-sm text-text-muted">今日失败</span>
+              <div className="p-4 bg-warning/10 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package size={18} className="text-warning" />
+                  <span className="text-sm text-text-muted">外卖订单</span>
                 </div>
-                <div className="text-xl font-bold text-danger mt-1">
-                  {Math.max(0, orders.filter(o => o.status === 'failed').length)}
-                </div>
+                <div className="text-xl font-bold text-warning">{currentSave.stats.deliveryOrdersCompleted}</div>
+                <div className="text-sm text-accent">{currentSave.stats.deliveryEarnings} 💰</div>
               </div>
             </div>
           </div>

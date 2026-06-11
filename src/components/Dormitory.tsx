@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { Cat, Heart, Moon, Zap, Plus, Bed } from 'lucide-react';
+import { Cat, Heart, Moon, Zap, Plus, Bed, AlertTriangle } from 'lucide-react';
 
 export default function Dormitory() {
   const { currentSave, hireEmployee, assignWork, restEmployee } = useGameStore();
@@ -15,6 +15,19 @@ export default function Dormitory() {
       setNewEmployeeName('');
       setShowHireModal(false);
     }
+  };
+
+  const getEnergyColor = (energy: number) => {
+    if (energy > 60) return 'bg-success';
+    if (energy > 30) return 'bg-warning';
+    return 'bg-danger';
+  };
+
+  const getEnergyStatus = (energy: number) => {
+    if (energy > 60) return '精力充沛';
+    if (energy > 30) return '有点累了';
+    if (energy > 0) return '筋疲力尽';
+    return '已罢工';
   };
 
   return (
@@ -46,56 +59,88 @@ export default function Dormitory() {
               <p className="text-text-muted">还没有员工</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               {currentSave.employees.map(employee => (
                 <div
                   key={employee.id}
-                  className={`cat-card p-3 ${employee.isWorking ? '' : 'opacity-70'}`}
+                  className={`cat-card p-4 ${!employee.isWorking ? 'opacity-75' : ''}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl ${
+                  <div className="flex items-center gap-4">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl ${
                       employee.isWorking ? 'bg-primary/20' : 'bg-gray-200'
                     }`}>
                       {employee.avatar}
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-medium text-text">{employee.name}</h3>
-                      <p className="text-xs text-text-muted">
-                        {employee.type === 'chef' ? '主厨' : '猫咪店员'}
-                      </p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Heart size={12} className="text-danger" />
-                        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-text">{employee.name}</h3>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${
+                          employee.type === 'chef' 
+                            ? 'bg-warning/20 text-warning' 
+                            : 'bg-primary/20 text-primary'
+                        }`}>
+                          {employee.type === 'chef' ? '主厨' : '店员'}
+                        </span>
+                        {employee.energy <= 20 && employee.isWorking && (
+                          <span className="px-2 py-0.5 bg-danger/20 text-danger rounded-full text-xs flex items-center gap-1">
+                            <AlertTriangle size={12} />
+                            体力不足
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted mt-1">等级 {employee.level}</p>
+                      
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                          <div className="flex items-center gap-1">
+                            <Heart size={12} className={employee.energy > 30 ? 'text-danger' : 'text-gray-400'} />
+                            <span>体力</span>
+                          </div>
+                          <span>{Math.round(employee.energy)}% - {getEnergyStatus(employee.energy)}</span>
+                        </div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div
-                            className={`h-full transition-all ${
-                              employee.energy > 60 ? 'bg-success' : employee.energy > 30 ? 'bg-warning' : 'bg-danger'
-                            }`}
-                            style={{ width: `${(employee.energy / employee.maxEnergy) * 100}%` }}
+                            className={`h-full transition-all duration-500 ${getEnergyColor(employee.energy)}`}
+                            style={{ width: `${employee.energy}%` }}
                           />
                         </div>
-                        <span className="text-xs text-text-muted">{employee.energy}%</span>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="mt-3 flex gap-2">
-                    {employee.isWorking ? (
-                      <button
-                        onClick={() => restEmployee(employee.id)}
-                        className="flex-1 px-3 py-2 bg-warning/20 text-warning rounded-full text-sm font-medium flex items-center justify-center gap-1 hover:bg-warning/30"
-                      >
-                        <Moon size={14} />
-                        休息
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => assignWork(employee.id)}
-                        className="flex-1 px-3 py-2 bg-success/20 text-success rounded-full text-sm font-medium flex items-center justify-center gap-1 hover:bg-success/30"
-                      >
-                        <Zap size={14} />
-                        工作
-                      </button>
-                    )}
+                    
+                    <div className="text-right">
+                      <div className="text-xs text-text-muted mb-2">
+                        {employee.isWorking ? (
+                          <span className="flex items-center gap-1 text-success">
+                            <Zap size={14} />
+                            工作中
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-warning">
+                            <Moon size={14} />
+                            休息中
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {employee.isWorking ? (
+                          <button
+                            onClick={() => restEmployee(employee.id)}
+                            className="px-3 py-2 bg-warning/20 text-warning rounded-full text-sm font-medium flex items-center gap-1 hover:bg-warning/30 transition-colors"
+                          >
+                            <Bed size={14} />
+                            休息
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => assignWork(employee.id)}
+                            className="px-3 py-2 bg-success/20 text-success rounded-full text-sm font-medium flex items-center gap-1 hover:bg-success/30 transition-colors"
+                          >
+                            <Zap size={14} />
+                            工作
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -106,27 +151,62 @@ export default function Dormitory() {
         <section>
           <h2 className="text-lg font-semibold text-text mb-3">员工福利</h2>
           <div className="cat-card p-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bed size={18} className="text-primary" />
-                  <span className="text-sm text-text">休息恢复体力</span>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                  <Heart size={18} className="text-success" />
                 </div>
-                <span className="text-xs text-text-muted">每天+20%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Heart size={18} className="text-danger" />
-                  <span className="text-sm text-text">体力低于30%效率下降</span>
+                <div>
+                  <h4 className="font-medium text-text">体力系统</h4>
+                  <p className="text-xs text-text-muted">工作会消耗体力，休息会恢复体力</p>
                 </div>
-                <span className="text-xs text-text-muted">效率-50%</span>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
                   <Zap size={18} className="text-warning" />
-                  <span className="text-sm text-text">工作猫咪自动接单</span>
                 </div>
-                <span className="text-xs text-success">自动处理</span>
+                <div>
+                  <h4 className="font-medium text-text">自动接单</h4>
+                  <p className="text-xs text-text-muted">工作中的猫咪员工会自动帮忙处理订单</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
+                  <AlertTriangle size={18} className="text-danger" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-text">体力警告</h4>
+                  <p className="text-xs text-text-muted">体力低于20%时工作效率大幅下降</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Bed size={18} className="text-primary" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-text">每日恢复</h4>
+                  <p className="text-xs text-text-muted">结束一天后所有员工恢复25%体力</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <h2 className="text-lg font-semibold text-text mb-3">工作统计</h2>
+          <div className="cat-card">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-success">
+                  {currentSave.employees.filter(e => e.isWorking).length}
+                </div>
+                <div className="text-xs text-text-muted">工作中</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-warning">
+                  {currentSave.employees.filter(e => !e.isWorking).length}
+                </div>
+                <div className="text-xs text-text-muted">休息中</div>
               </div>
             </div>
           </div>

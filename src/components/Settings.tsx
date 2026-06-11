@@ -3,20 +3,28 @@ import { useGameStore } from '@/store/gameStore';
 import { Settings as SettingsIcon, Save, Home, Moon, Sun, AlertTriangle, RotateCcw } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { currentSave, saveGame, setDifficulty, deleteSave, setCurrentPage } = useGameStore();
+  const { currentSave, saveGame, setDifficulty, deleteSave, setCurrentPage, loadSaves } = useGameStore();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
   if (!currentSave) return null;
 
   const handleSave = () => {
     saveGame();
-    alert('游戏已保存！');
+    setSaveMessage('游戏已保存！');
+    setTimeout(() => setSaveMessage(''), 2000);
   };
 
   const handleDelete = () => {
     if (confirm('确定要删除当前存档吗？此操作无法撤销！')) {
       deleteSave(currentSave.saveId);
     }
+  };
+
+  const handleReturnToMain = () => {
+    saveGame();
+    loadSaves();
+    setCurrentPage('main');
   };
 
   return (
@@ -43,6 +51,10 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-xl">
               <span className="text-text-muted">游戏天数</span>
               <span className="font-medium text-text">第 {currentSave.dayCount} 天</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-xl">
+              <span className="text-text-muted">当前金币</span>
+              <span className="font-medium text-accent">{currentSave.gold} 💰</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-xl">
               <span className="text-text-muted">最后保存</span>
@@ -96,6 +108,9 @@ export default function SettingsPage() {
               <Save size={18} />
               手动保存
             </button>
+            {saveMessage && (
+              <p className="text-center text-sm text-success">{saveMessage}</p>
+            )}
             <button
               onClick={() => setShowConfirm(true)}
               className="w-full px-4 py-3 bg-danger/20 text-danger rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-danger/30 transition-colors"
@@ -104,6 +119,9 @@ export default function SettingsPage() {
               删除存档
             </button>
           </div>
+          <p className="text-xs text-text-muted mt-3 text-center">
+            游戏会每30秒自动保存一次
+          </p>
         </div>
 
         <div className="cat-card mb-4">
@@ -134,7 +152,7 @@ export default function SettingsPage() {
 
         <div className="cat-card">
           <button
-            onClick={() => setCurrentPage('main')}
+            onClick={handleReturnToMain}
             className="w-full px-4 py-3 bg-gray-200 text-text rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-300 transition-colors"
           >
             <Home size={18} />

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GameState, SaveFile, Order, OrderItem, Difficulty } from '@/types';
+import type { GameState, SaveFile, Order, OrderItem, Difficulty, MakingDish } from '@/types';
 import { getInitialGameState, recipes, customers } from '@/data/gameData';
 
 interface GameStore {
@@ -7,7 +7,7 @@ interface GameStore {
   saves: SaveFile[];
   isPlaying: boolean;
   currentPage: string;
-  orders: Order[];
+  makingDishes: MakingDish[];
   
   loadSaves: () => void;
   createSave: (name: string, playerName?: string) => void;
@@ -23,12 +23,18 @@ interface GameStore {
   completeOrder: (orderId: string) => void;
   failOrder: (orderId: string) => void;
   
-  makeDish: (recipeId: string) => boolean;
+  addIngredientToStation: (ingredientId: string) => boolean;
+  clearStation: () => void;
+  startMaking: () => void;
+  updateMakingProgress: () => void;
+  addFinishedDish: (recipeId: string) => void;
+  
   addToInventory: (itemId: string, quantity: number) => void;
   
   hireEmployee: (name: string) => void;
   assignWork: (employeeId: string) => void;
   restEmployee: (employeeId: string) => void;
+  updateEmployees: () => void;
   
   buyDecoration: (decorationId: string) => boolean;
   equipDecoration: (decorationId: string) => void;
@@ -49,6 +55,11 @@ interface GameStore {
   upgradeCoffeeMachine: () => boolean;
   
   triggerDeliveryOrder: () => void;
+  
+  stationIngredients: string[];
+  setStationIngredients: (ingredients: string[]) => void;
+  
+  getNextSaveId: () => string;
 }
 
 const STORAGE_KEY = 'cat-cafe-saves';
@@ -73,7 +84,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   saves: [],
   isPlaying: false,
   currentPage: 'main',
-  orders: [],
+  makingDishes: [],
+  stationIngredients: [],
   
   loadSaves: () => {
     const saves = loadSavesFromStorage();
@@ -82,7 +94,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   createSave: (name, playerName = '店长') => {
     const id = generateId();
-    const newSave = getInitialGameState(id, playerName);
+    const newSave = {
+      ...getInitialGameState(id, playerName),
+      finishedDishes: {},
+      stats: {
+        totalCustomersServed: 0,
+        totalEarnings: 0,
+        dishesMade: 0,
+        tipsEarned: 0,
+        daysPlayed: 1,
+        deliveryOrdersCompleted: 0,
+        deliveryEarnings: 0,
+        dineInOrdersCompleted: 0,
+        dineInEarnings: 0,
+      },
+      employees: [{
+        id: 'emp1',
+        name: '喵大厨',
+        type: 'chef' as const,
+        level: 1,
+        energy: 100,
+        maxEnergy: 100,
+        isWorking: true,
+        hourlyWage: 50,
+        avatar: '👩🍳',
+        efficiency: 1,
+      }],
+    };
+    
     const saveFile: SaveFile = {
       id,
       name,
@@ -96,6 +135,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     const saves = [...get().saves, saveFile];
     saveSavesToStorage(saves);
+    localStorage.setItem(`cat-cafe-${id}`, JSON.stringify(newSave));
     
     set({
       saves,
@@ -109,7 +149,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const saves = get().saves;
     const saveIndex = saves.findIndex(s => s.id === saveId);
     
-    if (saveIndex === -1) return;
+    if (saveIndex === -1) {
+      const savedData = localStorage.getItem(`cat-cafe-${saveId}`);
+      if (savedData) {
+        try {
+          const gameState = JSON.parse(savedData) as GameState;
+          const existingSave = saves.find(s => s.id === saveId);
+          if (existingSave) {
+            set({
+              currentSave: gameState,
+              isPlaying: true,
+              currentPage: 'shop',
+            });
+          }
+        } catch {
+          console.error('Failed to load save');
+        }
+      }
+      return;
+    }
     
     const saveData = localStorage.getItem(`cat-cafe-${saveId}`);
     if (!saveData) return;
@@ -136,6 +194,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       currentSave: null,
       isPlaying: false,
       currentPage: 'main',
+      makingDishes: [],
+      stationIngredients: [],
     });
   },
   
@@ -188,6 +248,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       tip: Math.floor(Math.random() * 20) + 5,
       status: 'pending',
       createdAt: Date.now(),
+      isDelivery: false,
     };
     
     const orders = [...currentSave.orders, order];
@@ -202,6 +263,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (orderIndex === -1) return;
     
     const order = currentSave.orders[orderIndex];
+    
+    const canServe = order.items.every(item => {
+      const currentCount = currentSave.finishedDishes[item.itemId] || 0;
+      return currentCount >= item.quantity;
+    });
+    
+    if (!canServe) return;
+    
+    const finishedDishes = { ...currentSave.finishedDishes };
+    order.items.forEach(item => {
+      finishedDishes[item.itemId] = (finishedDishes[item.itemId] || 0) - item.quantity;
+    });
+    
     const orderTotal = order.items.reduce((sum, item) => {
       const recipe = recipes.find(r => r.id === item.itemId);
       return sum + (recipe?.price || 0) * item.quantity;
@@ -209,25 +283,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     const totalEarnings = orderTotal + order.tip;
     
-    const updatedOrders = currentSave.orders.map(o =>
-      o.id === orderId ? { ...o, status: 'completed' as const } : o
-    );
-    
     const customer = customers.find(c => c.id === order.customerId);
     let unlockedCustomers = [...currentSave.unlockedCustomers];
     if (customer && !unlockedCustomers.includes(customer.id)) {
       unlockedCustomers.push(customer.id);
     }
     
+    const isDelivery = order.isDelivery;
+    
     const updatedSave = {
       ...currentSave,
       gold: currentSave.gold + totalEarnings,
-      orders: updatedOrders.filter(o => o.id !== orderId),
+      orders: currentSave.orders.filter(o => o.id !== orderId),
+      finishedDishes,
       stats: {
         ...currentSave.stats,
         totalCustomersServed: currentSave.stats.totalCustomersServed + 1,
         totalEarnings: currentSave.stats.totalEarnings + totalEarnings,
         tipsEarned: currentSave.stats.tipsEarned + order.tip,
+        ...(isDelivery ? {
+          deliveryOrdersCompleted: currentSave.stats.deliveryOrdersCompleted + 1,
+          deliveryEarnings: currentSave.stats.deliveryEarnings + totalEarnings,
+        } : {
+          dineInOrdersCompleted: currentSave.stats.dineInOrdersCompleted + 1,
+          dineInEarnings: currentSave.stats.dineInEarnings + totalEarnings,
+        }),
       },
       unlockedCustomers,
       dailyGoals: currentSave.dailyGoals.map(g => {
@@ -252,32 +332,118 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const currentSave = get().currentSave;
     if (!currentSave) return;
     
-    const updatedOrders = currentSave.orders.map(o =>
-      o.id === orderId ? { ...o, status: 'failed' as const } : o
-    );
-    
-    set({ currentSave: { ...currentSave, orders: updatedOrders.filter(o => o.id !== orderId) } });
+    set({ currentSave: { ...currentSave, orders: currentSave.orders.filter(o => o.id !== orderId) } });
   },
   
-  makeDish: (recipeId) => {
+  setStationIngredients: (ingredients) => {
+    set({ stationIngredients: ingredients });
+  },
+  
+  addIngredientToStation: (ingredientId) => {
     const currentSave = get().currentSave;
     if (!currentSave) return false;
     
-    const recipe = recipes.find(r => r.id === recipeId);
-    if (!recipe || !currentSave.unlockedRecipes.includes(recipeId)) return false;
+    if (currentSave.inventory[ingredientId] <= 0) return false;
+    if (get().stationIngredients.length >= 6) return false;
     
     const inventory = { ...currentSave.inventory };
-    for (const ingredientId of recipe.ingredients) {
-      if (!inventory[ingredientId] || inventory[ingredientId] <= 0) {
-        return false;
+    inventory[ingredientId]--;
+    
+    set({
+      currentSave: { ...currentSave, inventory },
+      stationIngredients: [...get().stationIngredients, ingredientId],
+    });
+    
+    return true;
+  },
+  
+  clearStation: () => {
+    const currentSave = get().currentSave;
+    if (!currentSave) return;
+    
+    const inventory = { ...currentSave.inventory };
+    get().stationIngredients.forEach(ing => {
+      inventory[ing] = (inventory[ing] || 0) + 1;
+    });
+    
+    set({
+      currentSave: { ...currentSave, inventory },
+      stationIngredients: [],
+    });
+  },
+  
+  startMaking: () => {
+    const stationIngredients = get().stationIngredients;
+    if (stationIngredients.length === 0) return;
+    
+    const matchedRecipe = recipes.find(r => {
+      if (!get().currentSave?.unlockedRecipes.includes(r.id)) return false;
+      const sortedIngredients = [...stationIngredients].sort();
+      const sortedRecipeIngredients = [...r.ingredients].sort();
+      return JSON.stringify(sortedIngredients) === JSON.stringify(sortedRecipeIngredients);
+    });
+    
+    if (!matchedRecipe) return;
+    
+    const makingDish: MakingDish = {
+      recipeId: matchedRecipe.id,
+      progress: 0,
+      startTime: Date.now(),
+    };
+    
+    set({
+      makingDishes: [...get().makingDishes, makingDish],
+      stationIngredients: [],
+    });
+  },
+  
+  updateMakingProgress: () => {
+    const now = Date.now();
+    const currentSave = get().currentSave;
+    
+    let completedRecipes: string[] = [];
+    const updatedMakingDishes = get().makingDishes.map(making => {
+      const recipe = recipes.find(r => r.id === making.recipeId);
+      if (!recipe) return null;
+      
+      const speedBonus = currentSave
+        ? (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1
+        : 0;
+      
+      const chefBonus = currentSave?.employees
+        .filter(e => e.isWorking && e.type === 'chef')
+        .reduce((sum, e) => sum + e.efficiency, 0) || 0;
+      
+      const adjustedTime = (recipe.makeTime * 1000) / (1 + speedBonus + chefBonus * 0.3);
+      const elapsed = now - making.startTime;
+      const progress = Math.min(100, (elapsed / adjustedTime) * 100);
+      
+      if (progress >= 100) {
+        completedRecipes.push(making.recipeId);
+        return null;
       }
-      inventory[ingredientId]--;
-    }
+      
+      return { ...making, progress };
+    }).filter((m): m is MakingDish => m !== null);
+    
+    set({ makingDishes: updatedMakingDishes });
+    
+    completedRecipes.forEach(recipeId => {
+      get().addFinishedDish(recipeId);
+    });
+  },
+  
+  addFinishedDish: (recipeId) => {
+    const currentSave = get().currentSave;
+    if (!currentSave) return;
+    
+    const finishedDishes = { ...currentSave.finishedDishes };
+    finishedDishes[recipeId] = (finishedDishes[recipeId] || 0) + 1;
     
     set({
       currentSave: {
         ...currentSave,
-        inventory,
+        finishedDishes,
         stats: { ...currentSave.stats, dishesMade: currentSave.stats.dishesMade + 1 },
         dailyGoals: currentSave.dailyGoals.map(g => {
           if (g.id === 'goal2') {
@@ -291,7 +457,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     get().checkAchievements();
     get().checkDailyGoals();
-    return true;
   },
   
   addToInventory: (itemId, quantity) => {
@@ -321,6 +486,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isWorking: true,
       hourlyWage: 20,
       avatar: ['🐱', '😺', '😸', '😹', '😻'][Math.floor(Math.random() * 5)],
+      efficiency: 1,
     };
     
     set({
@@ -352,6 +518,40 @@ export const useGameStore = create<GameStore>((set, get) => ({
     );
     
     set({ currentSave: { ...currentSave, employees } });
+  },
+  
+  updateEmployees: () => {
+    const currentSave = get().currentSave;
+    if (!currentSave) return;
+    
+    const employees = currentSave.employees.map(e => {
+      if (e.isWorking) {
+        const energyLoss = e.type === 'chef' ? 0.5 : 0.3;
+        const newEnergy = Math.max(0, e.energy - energyLoss);
+        return { ...e, energy: newEnergy };
+      } else {
+        const energyGain = e.type === 'chef' ? 0.8 : 1;
+        const newEnergy = Math.min(e.maxEnergy, e.energy + energyGain);
+        return { ...e, energy: newEnergy };
+      }
+    });
+    
+    set({ currentSave: { ...currentSave, employees } });
+    
+    const workingCats = employees.filter(e => e.isWorking && e.type === 'cat' && e.energy > 20);
+    if (workingCats.length > 0 && currentSave.orders.length > 0) {
+      const pendingOrders = currentSave.orders.filter(o => o.status === 'pending' && !o.isDelivery);
+      if (pendingOrders.length > 0 && Math.random() < workingCats.length * 0.1) {
+        const randomOrder = pendingOrders[Math.floor(Math.random() * pendingOrders.length)];
+        const canServe = randomOrder.items.every(item => {
+          const currentCount = currentSave.finishedDishes[item.itemId] || 0;
+          return currentCount >= item.quantity;
+        });
+        if (canServe) {
+          get().completeOrder(randomOrder.id);
+        }
+      }
+    }
   },
   
   buyDecoration: (decorationId) => {
@@ -444,18 +644,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .reduce((sum, d) => sum + d.bonus.value, 0);
     
     const updatedOrders = currentSave.orders.map(order => {
-      const newPatience = Math.max(0, order.patience - (1 * difficultyMultiplier) + patienceBonus / 10);
+      const patienceDecrease = order.isDelivery ? 0.3 : 1;
+      const newPatience = Math.max(0, order.patience - (patienceDecrease * difficultyMultiplier) + patienceBonus / 20);
       return { ...order, patience: newPatience, status: newPatience <= 0 ? 'failed' as const : order.status };
     });
     
-    const failedOrders = updatedOrders.filter(o => o.status === 'failed');
     const remainingOrders = updatedOrders.filter(o => o.status !== 'failed');
     
     set({ currentSave: { ...currentSave, orders: remainingOrders } });
-    
-    failedOrders.forEach(() => {
-      get().failOrder(failedOrders[0]?.id || '');
-    });
   },
   
   checkAchievements: () => {
@@ -531,7 +727,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     const employees = currentSave.employees.map(e => ({
       ...e,
-      energy: Math.min(e.maxEnergy, e.energy + 20),
+      energy: Math.min(e.maxEnergy, e.energy + 25),
     }));
     
     const dailyGoals = [
@@ -615,13 +811,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
       id: generateId(),
       customerId: 'delivery',
       items,
-      patience: 120,
-      maxPatience: 120,
-      tip: Math.floor(Math.random() * 50) + 30,
+      patience: 180,
+      maxPatience: 180,
+      tip: Math.floor(Math.random() * 80) + 50,
       status: 'pending',
       createdAt: Date.now(),
+      isDelivery: true,
     };
     
     set({ currentSave: { ...currentSave, orders: [...currentSave.orders, deliveryOrder] } });
+  },
+  
+  getNextSaveId: () => {
+    return generateId();
   },
 }));

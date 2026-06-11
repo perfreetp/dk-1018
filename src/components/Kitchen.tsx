@@ -1,30 +1,38 @@
 import { useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { ingredients, recipes } from '@/data/gameData';
-import { ChefHat, Flame, Coffee, Lock, Plus, Check } from 'lucide-react';
+import { ChefHat, Flame, Coffee, Lock, Plus, Check, Trash2, Play } from 'lucide-react';
 
 export default function Kitchen() {
-  const { currentSave, makeDish, unlockRecipe, upgradeStove, upgradeCoffeeMachine } = useGameStore();
-  const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null);
-  const [makingDish, setMakingDish] = useState(false);
+  const { 
+    currentSave, 
+    stationIngredients,
+    makingDishes,
+    addIngredientToStation, 
+    clearStation, 
+    startMaking,
+    unlockRecipe,
+    upgradeStove,
+    upgradeCoffeeMachine,
+    addToInventory,
+  } = useGameStore();
+  
   const [showUnlockModal, setShowUnlockModal] = useState<string | null>(null);
 
   if (!currentSave) return null;
 
-  const handleMakeDish = (recipeId: string) => {
-    const recipe = recipes.find(r => r.id === recipeId);
-    if (!recipe) return;
+  const handleDragStart = (e: React.DragEvent, ingredientId: string) => {
+    e.dataTransfer.setData('ingredient', ingredientId);
+  };
 
-    setSelectedRecipe(recipeId);
-    setMakingDish(true);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const ingredientId = e.dataTransfer.getData('ingredient');
+    addIngredientToStation(ingredientId);
+  };
 
-    setTimeout(() => {
-      const success = makeDish(recipeId);
-      setMakingDish(false);
-      if (success) {
-        setSelectedRecipe(null);
-      }
-    }, recipe.makeTime * 200);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   const handleUnlockRecipe = (recipeId: string) => {
@@ -33,6 +41,13 @@ export default function Kitchen() {
       setShowUnlockModal(null);
     }
   };
+
+  const matchedRecipe = recipes.find(r => {
+    if (!currentSave.unlockedRecipes.includes(r.id)) return false;
+    const sortedIngredients = [...stationIngredients].sort();
+    const sortedRecipeIngredients = [...r.ingredients].sort();
+    return JSON.stringify(sortedIngredients) === JSON.stringify(sortedRecipeIngredients);
+  });
 
   const unlockedRecipes = recipes.filter(r => currentSave.unlockedRecipes.includes(r.id));
   const lockedRecipes = recipes.filter(r => !currentSave.unlockedRecipes.includes(r.id));
@@ -98,105 +113,226 @@ export default function Kitchen() {
         </section>
 
         <section className="mb-6">
-          <h2 className="text-lg font-semibold text-text mb-3">食材仓库</h2>
-          <div className="grid grid-cols-4 gap-2">
-            {ingredients.map(ingredient => (
-              <div
-                key={ingredient.id}
-                className="cat-card text-center p-2"
-              >
-                <div className="text-2xl mb-1">{ingredient.emoji}</div>
-                <div className="text-xs text-text-muted truncate">{ingredient.name}</div>
-                <div className="text-sm font-medium text-text">
-                  {currentSave.inventory[ingredient.id] || 0}
-                </div>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => {
-              Object.keys(currentSave.inventory).forEach(itemId => {
-                const currentAmount = currentSave.inventory[itemId] || 0;
-                if (currentAmount < 50) {
-                  const amountToAdd = Math.min(10, 50 - currentAmount);
-                  const cost = amountToAdd * 2;
-                  if (currentSave.gold >= cost) {
-                    currentSave.gold -= cost;
-                    currentSave.inventory[itemId] = currentAmount + amountToAdd;
-                  }
-                }
-              });
-            }}
-            disabled={currentSave.gold < 240}
-            className="mt-3 w-full cat-button text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+          <h2 className="text-lg font-semibold text-text mb-3">制作台</h2>
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            className={`cat-card min-h-[180px] border-2 border-dashed transition-all duration-300 ${
+              stationIngredients.length > 0 ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary/50'
+            }`}
           >
-            <Plus size={16} />
-            补充所有食材 (240 💰)
-          </button>
-        </section>
-
-        <section>
-          <h2 className="text-lg font-semibold text-text mb-3">制作甜点</h2>
-          
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-text-muted mb-2">已解锁食谱</h3>
-            <div className="space-y-2">
-              {unlockedRecipes.map(recipe => {
-                const isMaking = makingDish && selectedRecipe === recipe.id;
-                const canMake = recipe.ingredients.every(
-                  ing => currentSave.inventory[ing] && currentSave.inventory[ing] > 0
-                );
-
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-text-muted">拖拽食材到这里</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={clearStation}
+                  disabled={stationIngredients.length === 0}
+                  className="p-2 text-danger opacity-50 hover:opacity-100 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-3 min-h-[100px]">
+              {stationIngredients.map((ing, idx) => {
+                const ingredient = ingredients.find(i => i.id === ing);
                 return (
                   <div
-                    key={recipe.id}
-                    className={`cat-card ${isMaking ? 'ring-2 ring-accent' : ''}`}
+                    key={idx}
+                    className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-2xl shadow-md"
                   >
+                    {ingredient?.emoji}
+                  </div>
+                );
+              })}
+              {stationIngredients.length === 0 && (
+                <div className="w-full h-20 flex items-center justify-center text-text-muted">
+                  <span>放置食材开始制作</span>
+                </div>
+              )}
+            </div>
+            
+            {matchedRecipe && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{matchedRecipe.emoji}</span>
+                    <div>
+                      <h4 className="font-medium text-text">{matchedRecipe.name}</h4>
+                      <p className="text-sm text-text-muted">制作时间: {matchedRecipe.makeTime}秒</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={startMaking}
+                    className="cat-button flex items-center gap-2"
+                  >
+                    <Play size={16} />
+                    开始制作
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {stationIngredients.length > 0 && !matchedRecipe && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-sm text-danger text-center">配方不匹配，请检查食材组合</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-text">制作中</h2>
+            <span className="text-sm text-text-muted">{makingDishes.length} 份制作中</span>
+          </div>
+          
+          {makingDishes.length === 0 ? (
+            <div className="cat-card text-center py-6">
+              <div className="text-4xl mb-2">🍳</div>
+              <p className="text-text-muted">暂无制作中的甜点</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {makingDishes.map((making, idx) => {
+                const recipe = recipes.find(r => r.id === making.recipeId);
+                return (
+                  <div key={idx} className="cat-card">
                     <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
-                        isMaking ? 'bg-accent/20 animate-pulse' : 'bg-primary/20'
-                      }`}>
-                        {recipe.emoji}
+                      <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center text-2xl animate-pulse">
+                        {recipe?.emoji}
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-medium text-text">{recipe.name}</h4>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {recipe.ingredients.map(ing => {
-                            const ingredient = ingredients.find(i => i.id === ing);
-                            const hasIngredient = currentSave.inventory[ing] && currentSave.inventory[ing] > 0;
-                            return (
-                              <span
-                                key={ing}
-                                className={`text-xs px-2 py-0.5 rounded-full ${
-                                  hasIngredient ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'
-                                }`}
-                              >
-                                {ingredient?.emoji}
-                              </span>
-                            );
-                          })}
+                        <h4 className="font-medium text-text">{recipe?.name}</h4>
+                        <div className="mt-1">
+                          <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                            <span>制作进度</span>
+                            <span>{Math.round(making.progress)}%</span>
+                          </div>
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-accent transition-all duration-300"
+                              style={{ width: `${making.progress}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-accent">{recipe.price} 💰</div>
-                        <button
-                          onClick={() => handleMakeDish(recipe.id)}
-                          disabled={!canMake || isMaking}
-                          className={`mt-1 px-3 py-1 rounded-full text-sm font-medium transition-all ${
-                            isMaking
-                              ? 'bg-accent text-text'
-                              : canMake
-                              ? 'bg-primary text-white hover:bg-primary/90'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          {isMaking ? '制作中...' : '制作'}
-                        </button>
                       </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+        </section>
+
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-text">成品库存</h2>
+          </div>
+          <div className="cat-card">
+            <div className="grid grid-cols-4 gap-3">
+              {Object.entries(currentSave.finishedDishes).map(([recipeId, count]) => {
+                const recipe = recipes.find(r => r.id === recipeId);
+                return (
+                  <div key={recipeId} className="text-center p-2 bg-secondary/50 rounded-xl">
+                    <div className="text-2xl mb-1">{recipe?.emoji}</div>
+                    <div className="text-xs text-text-muted">{recipe?.name}</div>
+                    <div className="text-lg font-bold text-primary">{count}</div>
+                  </div>
+                );
+              })}
+              {Object.keys(currentSave.finishedDishes).length === 0 && (
+                <div className="col-span-4 text-center py-4 text-text-muted">
+                  暂无成品
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-text">食材仓库</h2>
+            <button
+              onClick={() => {
+                Object.keys(currentSave.inventory).forEach(itemId => {
+                  const currentAmount = currentSave.inventory[itemId] || 0;
+                  if (currentAmount < 50) {
+                    const amountToAdd = Math.min(10, 50 - currentAmount);
+                    const cost = amountToAdd * 2;
+                    if (currentSave.gold >= cost) {
+                      currentSave.gold -= cost;
+                      addToInventory(itemId, amountToAdd);
+                    }
+                  }
+                });
+              }}
+              disabled={currentSave.gold < 240}
+              className="cat-button text-sm flex items-center gap-1 disabled:opacity-50"
+            >
+              <Plus size={14} />
+              补充食材 (240 💰)
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {ingredients.map(ingredient => {
+              const count = currentSave.inventory[ingredient.id] || 0;
+              return (
+                <div
+                  key={ingredient.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, ingredient.id)}
+                  className={`cat-card text-center p-2 cursor-grab active:cursor-grabbing transition-all ${
+                    count <= 0 ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{ingredient.emoji}</div>
+                  <div className="text-xs text-text-muted truncate">{ingredient.name}</div>
+                  <div className={`text-sm font-medium ${count > 0 ? 'text-text' : 'text-danger'}`}>
+                    {count}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-text mb-3">食谱图鉴</h2>
+          
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-text-muted mb-2">已解锁食谱</h3>
+            <div className="space-y-2">
+              {unlockedRecipes.map(recipe => (
+                <div key={recipe.id} className="cat-card">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-2xl">
+                      {recipe.emoji}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-text">{recipe.name}</h4>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {recipe.ingredients.map(ing => {
+                          const ingredient = ingredients.find(i => i.id === ing);
+                          return (
+                            <span
+                              key={ing}
+                              className="text-xs px-2 py-0.5 bg-secondary rounded-full"
+                            >
+                              {ingredient?.emoji} {ingredient?.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-accent">{recipe.price} 💰</div>
+                      <div className="text-xs text-text-muted">{recipe.makeTime}秒</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

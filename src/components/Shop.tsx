@@ -1,18 +1,34 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { customers, recipes } from '@/data/gameData';
-import { Coins, Star, Calendar, Users, Sparkles, Package } from 'lucide-react';
+import type { Order } from '@/types';
+import { Coins, Star, Calendar, Users, Sparkles, Package, AlertCircle } from 'lucide-react';
 
 export default function Shop() {
-  const { currentSave, addOrder, completeOrder, makeDish, autoSave, updatePatience, nextDay, triggerDeliveryOrder } = useGameStore();
-  const orders = currentSave?.orders || [];
+  const { 
+    currentSave, 
+    addOrder, 
+    completeOrder, 
+    autoSave, 
+    updatePatience, 
+    nextDay, 
+    triggerDeliveryOrder,
+    updateMakingProgress,
+    updateEmployees,
+  } = useGameStore();
   const [showNotification, setShowNotification] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentSave) return;
+    
     const gameLoop = setInterval(() => {
       updatePatience();
+      updateMakingProgress();
+      updateEmployees();
+      
+      const orders = currentSave.orders;
       if (Math.random() < 0.02 && orders.length < 5) {
-        const unlockedCustomers = currentSave?.unlockedCustomers || [];
+        const unlockedCustomers = currentSave.unlockedCustomers || [];
         if (unlockedCustomers.length > 0) {
           const randomCustomer = unlockedCustomers[Math.floor(Math.random() * unlockedCustomers.length)];
           addOrder(randomCustomer);
@@ -31,59 +47,44 @@ export default function Shop() {
       clearInterval(gameLoop);
       clearInterval(saveLoop);
     };
-  }, [currentSave?.unlockedCustomers, orders.length]);
+  }, [currentSave?.unlockedCustomers, currentSave]);
 
   useEffect(() => {
-    const completedOrders = orders.filter(o => o.status === 'completed');
+    if (!currentSave) return;
+    const completedOrders = currentSave.orders.filter((o: Order) => o.status === 'completed');
     if (completedOrders.length > 0) {
       setShowNotification('订单完成！💰');
       setTimeout(() => setShowNotification(null), 2000);
     }
-  }, [orders]);
+  }, [currentSave?.orders]);
 
   if (!currentSave) return null;
 
+  const orders = currentSave.orders;
+
   const handleServeOrder = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
+    const order = orders.find((o: Order) => o.id === orderId);
     if (!order) return;
 
-    let canServe = true;
-    for (const item of order.items) {
-      const recipe = recipes.find(r => r.id === item.itemId);
-      if (!recipe) {
-        canServe = false;
-        break;
-      }
-      
-      const inventory = currentSave.inventory;
-      for (const ingredient of recipe.ingredients) {
-        if (!inventory[ingredient] || inventory[ingredient] <= 0) {
-          canServe = false;
-          break;
-        }
-      }
-      
-      if (!canServe) break;
-    }
+    const canServe = order.items.every((item) => {
+      const currentCount = currentSave.finishedDishes[item.itemId] || 0;
+      return currentCount >= item.quantity;
+    });
 
     if (canServe) {
-      order.items.forEach(item => {
-        for (let i = 0; i < item.quantity; i++) {
-          makeDish(item.itemId);
-        }
-      });
       completeOrder(orderId);
     } else {
-      setShowNotification('食材不足！🥲');
+      setShowNotification('成品不足！去厨房制作吧~');
       setTimeout(() => setShowNotification(null), 2000);
     }
   };
 
   const getCustomerInfo = (customerId: string) => {
     if (customerId === 'delivery') {
-      return { name: '外卖订单', avatar: '📦' };
+      return { name: '外卖订单', avatar: '📦', isDelivery: true };
     }
-    return customers.find(c => c.id === customerId) || { name: '未知', avatar: '🐱' };
+    const customer = customers.find(c => c.id === customerId);
+    return { name: customer?.name || '未知', avatar: customer?.avatar || '🐱', isDelivery: false };
   };
 
   const getPatienceColor = (patience: number, maxPatience: number) => {
@@ -178,17 +179,28 @@ export default function Shop() {
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map(order => {
+              {orders.map((order: Order) => {
                 const customer = getCustomerInfo(order.customerId);
+                const patiencePercentage = (order.patience / order.maxPatience) * 100;
+                
                 return (
                   <div key={order.id} className="cat-card">
                     <div className="flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-2xl">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
+                        customer.isDelivery ? 'bg-warning/20' : 'bg-primary/20'
+                      }`}>
                         {customer.avatar}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-text">{customer.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-text">{customer.name}</h3>
+                            {customer.isDelivery && (
+                              <span className="px-2 py-0.5 bg-warning/20 text-warning rounded-full text-xs">
+                                外卖
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1 text-sm">
                             <span className="text-accent">+{order.tip}</span>
                             <span>💰</span>
@@ -197,18 +209,22 @@ export default function Shop() {
                         <div className="patience-bar mt-2">
                           <div
                             className={`patience-fill ${getPatienceColor(order.patience, order.maxPatience)}`}
-                            style={{ width: `${(order.patience / order.maxPatience) * 100}%` }}
+                            style={{ width: `${patiencePercentage}%` }}
                           />
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {order.items.map((item, idx) => {
                             const recipe = recipes.find(r => r.id === item.itemId);
+                            const hasEnough = (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity;
                             return (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-secondary rounded-full text-xs"
+                                className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 ${
+                                  hasEnough ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'
+                                }`}
                               >
                                 {recipe?.emoji} {recipe?.name} x{item.quantity}
+                                {!hasEnough && <AlertCircle size={12} />}
                               </span>
                             );
                           })}
@@ -217,7 +233,12 @@ export default function Shop() {
                     </div>
                     <button
                       onClick={() => handleServeOrder(order.id)}
-                      className="w-full mt-3 cat-button flex items-center justify-center gap-2"
+                      disabled={!order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)}
+                      className={`w-full mt-3 px-4 py-2 rounded-full font-medium flex items-center justify-center gap-2 transition-all ${
+                        order.items.every((item) => (currentSave.finishedDishes[item.itemId] || 0) >= item.quantity)
+                          ? 'cat-button'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
                     >
                       {order.customerId === 'delivery' ? (
                         <>
@@ -238,25 +259,65 @@ export default function Shop() {
           )}
         </section>
 
+        <section className="mb-6">
+          <h2 className="text-lg font-semibold text-text mb-3">成品库存</h2>
+          <div className="cat-card">
+            <div className="grid grid-cols-4 gap-2">
+              {Object.entries(currentSave.finishedDishes).map(([recipeId, count]) => {
+                const recipe = recipes.find(r => r.id === recipeId);
+                return (
+                  <div key={recipeId} className="text-center p-2 bg-secondary/50 rounded-xl">
+                    <div className="text-xl mb-1">{recipe?.emoji}</div>
+                    <div className="text-xs text-text-muted truncate">{recipe?.name}</div>
+                    <div className="text-sm font-bold text-primary">{count}</div>
+                  </div>
+                );
+              })}
+              {Object.keys(currentSave.finishedDishes).length === 0 && (
+                <div className="col-span-4 text-center py-4 text-text-muted">
+                  <div className="text-2xl mb-2">🍩</div>
+                  <span>暂无成品，去厨房制作吧</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section>
           <h2 className="text-lg font-semibold text-text mb-3">营业统计</h2>
           <div className="cat-card">
             <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-3">
+              <div className="text-center">
                 <div className="text-2xl font-bold text-primary">{currentSave.stats.totalCustomersServed}</div>
                 <div className="text-xs text-text-muted">总服务顾客</div>
               </div>
-              <div className="text-center p-3">
+              <div className="text-center">
                 <div className="text-2xl font-bold text-accent">{currentSave.stats.totalEarnings}</div>
                 <div className="text-xs text-text-muted">总收入</div>
               </div>
-              <div className="text-center p-3">
+              <div className="text-center">
                 <div className="text-2xl font-bold text-success">{currentSave.stats.dishesMade}</div>
                 <div className="text-xs text-text-muted">制作甜点</div>
               </div>
-              <div className="text-center p-3">
+              <div className="text-center">
                 <div className="text-2xl font-bold text-warning">{currentSave.stats.tipsEarned}</div>
                 <div className="text-xs text-text-muted">获得小费</div>
+              </div>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-text-muted mb-3 text-center">收入分类</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-primary/10 rounded-xl">
+                  <div className="text-xl font-bold text-primary">{currentSave.stats.dineInOrdersCompleted}</div>
+                  <div className="text-xs text-text-muted">堂食订单</div>
+                  <div className="text-sm font-medium text-accent">{currentSave.stats.dineInEarnings} 💰</div>
+                </div>
+                <div className="text-center p-3 bg-warning/10 rounded-xl">
+                  <div className="text-xl font-bold text-warning">{currentSave.stats.deliveryOrdersCompleted}</div>
+                  <div className="text-xs text-text-muted">外卖订单</div>
+                  <div className="text-sm font-medium text-accent">{currentSave.stats.deliveryEarnings} 💰</div>
+                </div>
               </div>
             </div>
           </div>
