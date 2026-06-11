@@ -123,6 +123,16 @@ export interface GameState {
   finishedDishes: Record<string, number>;
   stoveLevel: number;
   coffeeMachineLevel: number;
+  makingQueue: MakingDish[];
+  dailyRecords: DailyRecord[];
+  todayStats: {
+    dineInOrders: number;
+    dineInEarnings: number;
+    deliveryOrders: number;
+    deliveryEarnings: number;
+    tips: number;
+    decorationsSpent: number;
+  };
 }
 
 export interface SaveFile {
@@ -137,7 +147,20 @@ export interface SaveFile {
 }
 
 export interface MakingDish {
+  id: string;
   recipeId: string;
   progress: number;
   startTime: number;
+}
+
+export interface DailyRecord {
+  day: number;
+  dineInOrders: number;
+  dineInEarnings: number;
+  deliveryOrders: number;
+  deliveryEarnings: number;
+  tips: number;
+  decorationsSpent: number;
+  netIncome: number;
+  date: string;
 }

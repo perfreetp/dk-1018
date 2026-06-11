@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { ingredients, recipes } from '@/data/gameData';
-import { ChefHat, Flame, Coffee, Lock, Plus, Check, Trash2 } from 'lucide-react';
+import { ChefHat, Flame, Coffee, Lock, Plus, Check, Trash2, Clock } from 'lucide-react';
+import type { MakingDish } from '@/types';
 
 export default function Kitchen() {
   const { 
     currentSave, 
     stationIngredients,
-    makingDishes,
     addIngredientToStation, 
     clearStation, 
     unlockRecipe,
@@ -18,10 +18,12 @@ export default function Kitchen() {
   } = useGameStore();
   
   const [showUnlockModal, setShowUnlockModal] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const progressInterval = setInterval(() => {
       updateMakingProgress();
+      forceUpdate(n => n + 1);
     }, 100);
     
     return () => clearInterval(progressInterval);
@@ -59,6 +61,28 @@ export default function Kitchen() {
 
   const unlockedRecipes = recipes.filter(r => currentSave.unlockedRecipes.includes(r.id));
   const lockedRecipes = recipes.filter(r => !currentSave.unlockedRecipes.includes(r.id));
+
+  const getRemainingTime = (making: MakingDish) => {
+    const recipe = recipes.find(r => r.id === making.recipeId);
+    if (!recipe) return '计算中...';
+    
+    const speedBonus = (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1;
+    const chefBonus = currentSave.employees
+      .filter(e => e.isWorking && e.type === 'chef')
+      .reduce((sum, e) => sum + e.efficiency, 0) || 0;
+    
+    const adjustedTime = (recipe.makeTime * 1000) / (1 + speedBonus + chefBonus * 0.3);
+    const elapsed = Date.now() - making.startTime;
+    const remaining = Math.max(0, adjustedTime - elapsed);
+    
+    const seconds = Math.ceil(remaining / 1000);
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${seconds}秒`;
+  };
 
   return (
     <div className="min-h-screen pb-20">
@@ -118,6 +142,62 @@ export default function Kitchen() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-text">制作队列</h2>
+            <span className="text-sm text-text-muted">{currentSave.makingQueue.length} 份制作中</span>
+          </div>
+          
+          {currentSave.makingQueue.length === 0 ? (
+            <div className="cat-card text-center py-6">
+              <div className="text-4xl mb-2">🍳</div>
+              <p className="text-text-muted">拖拽食材到制作台开始制作</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {currentSave.makingQueue.map((making, idx) => {
+                const recipe = recipes.find(r => r.id === making.recipeId);
+                return (
+                  <div key={making.id} className="cat-card">
+                    <div className="flex items-center gap-4">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm font-bold text-accent">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-text-muted mt-1">队列#{idx + 1}</span>
+                      </div>
+                      <div className="w-14 h-14 rounded-full bg-accent/20 flex items-center justify-center text-3xl animate-pulse">
+                        {recipe?.emoji}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-text">{recipe?.name}</h4>
+                          <div className="flex items-center gap-1 text-sm text-accent">
+                            <Clock size={14} />
+                            {getRemainingTime(making)}
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                            <span>制作进度</span>
+                            <span>{Math.round(making.progress)}%</span>
+                          </div>
+                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-accent to-warning transition-all duration-100"
+                              style={{ width: `${making.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section className="mb-6">
@@ -185,53 +265,7 @@ export default function Kitchen() {
         </section>
 
         <section className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-text">制作中</h2>
-            <span className="text-sm text-text-muted">{makingDishes.length} 份制作中</span>
-          </div>
-          
-          {makingDishes.length === 0 ? (
-            <div className="cat-card text-center py-6">
-              <div className="text-4xl mb-2">🍳</div>
-              <p className="text-text-muted">暂无制作中的甜点</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {makingDishes.map((making, idx) => {
-                const recipe = recipes.find(r => r.id === making.recipeId);
-                return (
-                  <div key={idx} className="cat-card">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center text-2xl animate-pulse">
-                        {recipe?.emoji}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-text">{recipe?.name}</h4>
-                        <div className="mt-1">
-                          <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                            <span>制作进度</span>
-                            <span>{Math.round(making.progress)}%</span>
-                          </div>
-                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-accent transition-all duration-100"
-                              style={{ width: `${making.progress}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-text">成品库存</h2>
-          </div>
+          <h2 className="text-lg font-semibold text-text mb-3">成品库存</h2>
           <div className="cat-card">
             <div className="grid grid-cols-4 gap-3">
               {Object.entries(currentSave.finishedDishes).map(([recipeId, count]) => {
@@ -264,7 +298,6 @@ export default function Kitchen() {
                     const amountToAdd = Math.min(10, 50 - currentAmount);
                     const cost = amountToAdd * 2;
                     if (currentSave.gold >= cost) {
-                      currentSave.gold -= cost;
                       addToInventory(itemId, amountToAdd);
                     }
                   }

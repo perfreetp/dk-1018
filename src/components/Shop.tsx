@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { customers, recipes } from '@/data/gameData';
 import type { Order } from '@/types';
-import { Coins, Star, Calendar, Users, Sparkles, Package, AlertCircle, Timer } from 'lucide-react';
+import { Coins, Star, Calendar, Users, Sparkles, Package, AlertCircle, Timer, BarChart3, History } from 'lucide-react';
 
 export default function Shop() {
   const { 
@@ -13,6 +13,7 @@ export default function Shop() {
     triggerDeliveryOrder,
   } = useGameStore();
   const [showNotification, setShowNotification] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -83,6 +84,9 @@ export default function Shop() {
     }
     return `${seconds}秒`;
   };
+
+  const todayIncome = currentSave.todayStats.dineInEarnings + currentSave.todayStats.deliveryEarnings + currentSave.todayStats.tips;
+  const todayNetIncome = todayIncome - currentSave.todayStats.decorationsSpent;
 
   return (
     <div className="min-h-screen pb-20">
@@ -155,6 +159,102 @@ export default function Shop() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="mb-6">
+          <h2 className="text-lg font-semibold text-text mb-3 flex items-center gap-2">
+            <BarChart3 size={20} className="text-primary" />
+            今日统计
+          </h2>
+          <div className="cat-card">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3">
+                <div className="flex items-center gap-2 text-sm text-text-muted mb-1">
+                  <span>🍽️</span>
+                  堂食订单
+                </div>
+                <div className="text-xl font-bold text-primary">{currentSave.todayStats.dineInOrders}</div>
+                <div className="text-sm text-accent">{currentSave.todayStats.dineInEarnings} 💰</div>
+              </div>
+              <div className="p-3">
+                <div className="flex items-center gap-2 text-sm text-text-muted mb-1">
+                  <span>📦</span>
+                  外卖订单
+                </div>
+                <div className="text-xl font-bold text-warning">{currentSave.todayStats.deliveryOrders}</div>
+                <div className="text-sm text-accent">{currentSave.todayStats.deliveryEarnings} 💰</div>
+              </div>
+              <div className="p-3">
+                <div className="flex items-center gap-2 text-sm text-text-muted mb-1">
+                  <span>💵</span>
+                  小费收入
+                </div>
+                <div className="text-xl font-bold text-success">{currentSave.todayStats.tips}</div>
+                <div className="text-sm text-text-muted">额外收入</div>
+              </div>
+              <div className="p-3">
+                <div className="flex items-center gap-2 text-sm text-text-muted mb-1">
+                  <span>🏠</span>
+                  装饰花费
+                </div>
+                <div className="text-xl font-bold text-danger">-{currentSave.todayStats.decorationsSpent}</div>
+                <div className="text-sm text-text-muted">今日支出</div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">今日净收入</span>
+                <span className={`text-2xl font-bold ${todayNetIncome >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {todayNetIncome >= 0 ? '+' : ''}{todayNetIncome} 💰
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-text flex items-center gap-2">
+              <History size={20} className="text-primary" />
+              历史记录
+            </h2>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="text-sm text-primary hover:underline"
+            >
+              {showHistory ? '收起' : '查看'}
+            </button>
+          </div>
+          
+          {showHistory && currentSave.dailyRecords.length > 0 && (
+            <div className="cat-card">
+              <div className="space-y-3">
+                {[...currentSave.dailyRecords].reverse().slice(0, 10).map(record => (
+                  <div key={record.day} className="flex items-center justify-between p-3 bg-secondary/50 rounded-xl">
+                    <div>
+                      <div className="font-medium text-text">第 {record.day} 天</div>
+                      <div className="text-xs text-text-muted">{record.date}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-bold ${record.netIncome >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {record.netIncome >= 0 ? '+' : ''}{record.netIncome} 💰
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {record.dineInOrders}堂食 + {record.deliveryOrders}外卖
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {showHistory && currentSave.dailyRecords.length === 0 && (
+            <div className="cat-card text-center py-4">
+              <div className="text-2xl mb-2">📊</div>
+              <p className="text-text-muted">暂无历史记录，结束今天后开始记录</p>
+            </div>
+          )}
         </section>
 
         <section className="mb-6">

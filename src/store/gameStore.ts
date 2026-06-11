@@ -121,6 +121,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         avatar: '👩🍳',
         efficiency: 1,
       }],
+      makingQueue: [],
+      dailyRecords: [],
+      todayStats: {
+        dineInOrders: 0,
+        dineInEarnings: 0,
+        deliveryOrders: 0,
+        deliveryEarnings: 0,
+        tips: 0,
+        decorationsSpent: 0,
+      },
     };
     
     const saveFile: SaveFile = {
@@ -303,11 +313,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     const isDelivery = order.isDelivery;
     
+    const updatedTodayStats = { ...currentSave.todayStats };
+    if (isDelivery) {
+      updatedTodayStats.deliveryOrders++;
+      updatedTodayStats.deliveryEarnings += totalEarnings;
+    } else {
+      updatedTodayStats.dineInOrders++;
+      updatedTodayStats.dineInEarnings += totalEarnings;
+    }
+    updatedTodayStats.tips += order.tip;
+    
     const updatedSave = {
       ...currentSave,
       gold: currentSave.gold + totalEarnings,
       orders: currentSave.orders.filter(o => o.id !== orderId),
       finishedDishes,
+      todayStats: updatedTodayStats,
       stats: {
         ...currentSave.stats,
         totalCustomersServed: currentSave.stats.totalCustomersServed + 1,
@@ -377,13 +398,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     if (matchedRecipe) {
       const makingDish: MakingDish = {
+        id: generateId(),
         recipeId: matchedRecipe.id,
         progress: 0,
         startTime: Date.now(),
       };
       
       set({
-        makingDishes: [...get().makingDishes, makingDish],
+        currentSave: { ...currentSave, makingQueue: [...currentSave.makingQueue, makingDish] },
         stationIngredients: [],
       });
     }
@@ -420,6 +442,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!matchedRecipe) return;
     
     const makingDish: MakingDish = {
+      id: generateId(),
       recipeId: matchedRecipe.id,
       progress: 0,
       startTime: Date.now(),
@@ -434,17 +457,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   updateMakingProgress: () => {
     const now = Date.now();
     const currentSave = get().currentSave;
+    if (!currentSave) return;
     
     let completedRecipes: string[] = [];
-    const updatedMakingDishes = get().makingDishes.map(making => {
+    const updatedQueue = currentSave.makingQueue.map(making => {
       const recipe = recipes.find(r => r.id === making.recipeId);
       if (!recipe) return null;
       
-      const speedBonus = currentSave
-        ? (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1
-        : 0;
+      const speedBonus = (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1;
       
-      const chefBonus = currentSave?.employees
+      const chefBonus = currentSave.employees
         .filter(e => e.isWorking && e.type === 'chef')
         .reduce((sum, e) => sum + e.efficiency, 0) || 0;
       
@@ -460,7 +482,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return { ...making, progress };
     }).filter((m): m is MakingDish => m !== null);
     
-    set({ makingDishes: updatedMakingDishes });
+    set({ currentSave: { ...currentSave, makingQueue: updatedQueue } });
     
     completedRecipes.forEach(recipeId => {
       get().addFinishedDish(recipeId);
@@ -606,6 +628,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ...currentSave,
         gold: currentSave.gold - decoration.price,
         decorations,
+        todayStats: {
+          ...currentSave.todayStats,
+          decorationsSpent: currentSave.todayStats.decorationsSpent + decoration.price,
+        },
       },
     });
     
@@ -678,9 +704,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .reduce((sum, d) => sum + d.bonus.value, 0);
     
     const updatedOrders = currentSave.orders.map(order => {
-      const patienceDecrease = order.isDelivery ? 0.3 : 1;
-      const newPatience = Math.max(0, order.patience - (patienceDecrease * difficultyMultiplier) + patienceBonus / 20);
-      return { ...order, patience: newPatience, status: newPatience <= 0 ? 'failed' as const : order.status };
+      if (order.isDelivery) {
+        const newPatience = Math.max(0, order.patience - 1);
+        return { ...order, patience: newPatience, status: newPatience <= 0 ? 'failed' as const : order.status };
+      } else {
+        const patienceDecrease = 1;
+        const newPatience = Math.max(0, order.patience - (patienceDecrease * difficultyMultiplier) + patienceBonus / 20);
+        return { ...order, patience: newPatience, status: newPatience <= 0 ? 'failed' as const : order.status };
+      }
     });
     
     const remainingOrders = updatedOrders.filter(o => o.status !== 'failed');
@@ -770,12 +801,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
       { id: 'goal3', description: '获得50金币小费', target: 50, current: 0, reward: 200, completed: false },
     ];
     
+    const todayIncome = currentSave.todayStats.dineInEarnings + currentSave.todayStats.deliveryEarnings + currentSave.todayStats.tips;
+    const todayRecord = {
+      day: currentSave.dayCount,
+      dineInOrders: currentSave.todayStats.dineInOrders,
+      dineInEarnings: currentSave.todayStats.dineInEarnings,
+      deliveryOrders: currentSave.todayStats.deliveryOrders,
+      deliveryEarnings: currentSave.todayStats.deliveryEarnings,
+      tips: currentSave.todayStats.tips,
+      decorationsSpent: currentSave.todayStats.decorationsSpent,
+      netIncome: todayIncome - currentSave.todayStats.decorationsSpent,
+      date: new Date().toISOString().split('T')[0],
+    };
+    
     set({
       currentSave: {
         ...currentSave,
         dayCount: currentSave.dayCount + 1,
         employees,
         dailyGoals,
+        dailyRecords: [...currentSave.dailyRecords, todayRecord],
+        todayStats: {
+          dineInOrders: 0,
+          dineInEarnings: 0,
+          deliveryOrders: 0,
+          deliveryEarnings: 0,
+          tips: 0,
+          decorationsSpent: 0,
+        },
         stats: { ...currentSave.stats, daysPlayed: currentSave.stats.daysPlayed + 1 },
       },
     });
