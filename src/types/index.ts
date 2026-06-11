@@ -151,6 +151,7 @@ export interface MakingDish {
   recipeId: string;
   progress: number;
   startTime: number;
+  started: boolean;
 }
 
 export interface DailyRecord {

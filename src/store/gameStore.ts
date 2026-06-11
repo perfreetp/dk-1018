@@ -316,10 +316,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const updatedTodayStats = { ...currentSave.todayStats };
     if (isDelivery) {
       updatedTodayStats.deliveryOrders++;
-      updatedTodayStats.deliveryEarnings += totalEarnings;
+      updatedTodayStats.deliveryEarnings += orderTotal;
     } else {
       updatedTodayStats.dineInOrders++;
-      updatedTodayStats.dineInEarnings += totalEarnings;
+      updatedTodayStats.dineInEarnings += orderTotal;
     }
     updatedTodayStats.tips += order.tip;
     
@@ -402,6 +402,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         recipeId: matchedRecipe.id,
         progress: 0,
         startTime: Date.now(),
+        started: currentSave.makingQueue.length === 0,
       };
       
       set({
@@ -441,15 +442,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     if (!matchedRecipe) return;
     
+    const currentSave = get().currentSave;
+    if (!currentSave) return;
+    
     const makingDish: MakingDish = {
       id: generateId(),
       recipeId: matchedRecipe.id,
       progress: 0,
       startTime: Date.now(),
+      started: currentSave.makingQueue.length === 0,
     };
     
     set({
-      makingDishes: [...get().makingDishes, makingDish],
+      currentSave: { ...currentSave, makingQueue: [...currentSave.makingQueue, makingDish] },
       stationIngredients: [],
     });
   },
@@ -460,27 +465,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!currentSave) return;
     
     let completedRecipes: string[] = [];
-    const updatedQueue = currentSave.makingQueue.map(making => {
+    let updatedQueue = [...currentSave.makingQueue];
+    
+    const firstStartedIndex = updatedQueue.findIndex(m => m.started);
+    
+    if (firstStartedIndex !== -1) {
+      const making = updatedQueue[firstStartedIndex];
       const recipe = recipes.find(r => r.id === making.recipeId);
-      if (!recipe) return null;
       
-      const speedBonus = (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1;
-      
-      const chefBonus = currentSave.employees
-        .filter(e => e.isWorking && e.type === 'chef')
-        .reduce((sum, e) => sum + e.efficiency, 0) || 0;
-      
-      const adjustedTime = (recipe.makeTime * 1000) / (1 + speedBonus + chefBonus * 0.3);
-      const elapsed = now - making.startTime;
-      const progress = Math.min(100, (elapsed / adjustedTime) * 100);
-      
-      if (progress >= 100) {
-        completedRecipes.push(making.recipeId);
-        return null;
+      if (recipe) {
+        const speedBonus = (currentSave.stoveLevel - 1) * 0.2 + (currentSave.coffeeMachineLevel - 1) * 0.1;
+        const chefBonus = currentSave.employees
+          .filter(e => e.isWorking && e.type === 'chef')
+          .reduce((sum, e) => sum + e.efficiency, 0) || 0;
+        
+        const adjustedTime = (recipe.makeTime * 1000) / (1 + speedBonus + chefBonus * 0.3);
+        const elapsed = now - making.startTime;
+        const progress = Math.min(100, (elapsed / adjustedTime) * 100);
+        
+        if (progress >= 100) {
+          completedRecipes.push(making.recipeId);
+          updatedQueue.splice(firstStartedIndex, 1);
+          
+          if (updatedQueue.length > 0) {
+            updatedQueue[0] = { ...updatedQueue[0], started: true, startTime: Date.now() };
+          }
+        } else {
+          updatedQueue[firstStartedIndex] = { ...making, progress };
+        }
       }
-      
-      return { ...making, progress };
-    }).filter((m): m is MakingDish => m !== null);
+    }
     
     set({ currentSave: { ...currentSave, makingQueue: updatedQueue } });
     

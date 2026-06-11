@@ -5,17 +5,16 @@ import type { Order } from '@/types';
 import { ClipboardList, Clock, CheckCircle, Package, AlertCircle, Timer } from 'lucide-react';
 
 export default function Orders() {
-  const { currentSave, completeOrder, updatePatience } = useGameStore();
+  const { currentSave, completeOrder } = useGameStore();
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const timerInterval = setInterval(() => {
-      updatePatience();
       forceUpdate(n => n + 1);
     }, 1000);
     
     return () => clearInterval(timerInterval);
-  }, [updatePatience]);
+  }, []);
 
   if (!currentSave) return null;
   

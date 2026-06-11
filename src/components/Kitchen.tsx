@@ -63,6 +63,8 @@ export default function Kitchen() {
   const lockedRecipes = recipes.filter(r => !currentSave.unlockedRecipes.includes(r.id));
 
   const getRemainingTime = (making: MakingDish) => {
+    if (!making.started) return '排队中';
+    
     const recipe = recipes.find(r => r.id === making.recipeId);
     if (!recipe) return '计算中...';
     
@@ -159,22 +161,32 @@ export default function Kitchen() {
             <div className="space-y-3">
               {currentSave.makingQueue.map((making, idx) => {
                 const recipe = recipes.find(r => r.id === making.recipeId);
+                const isFirst = idx === 0;
                 return (
-                  <div key={making.id} className="cat-card">
+                  <div key={making.id} className={`cat-card ${isFirst && making.started ? 'ring-2 ring-accent' : ''}`}>
                     <div className="flex items-center gap-4">
                       <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm font-bold text-accent">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          isFirst && making.started ? 'bg-accent text-white' : 'bg-accent/20 text-accent'
+                        }`}>
                           {idx + 1}
                         </div>
                         <span className="text-xs text-text-muted mt-1">队列#{idx + 1}</span>
+                        {isFirst && making.started && (
+                          <span className="text-xs text-success mt-1">制作中</span>
+                        )}
                       </div>
-                      <div className="w-14 h-14 rounded-full bg-accent/20 flex items-center justify-center text-3xl animate-pulse">
+                      <div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl ${
+                        isFirst && making.started ? 'bg-accent/20 animate-pulse' : 'bg-gray-200'
+                      }`}>
                         {recipe?.emoji}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h4 className="font-medium text-text">{recipe?.name}</h4>
-                          <div className="flex items-center gap-1 text-sm text-accent">
+                          <div className={`flex items-center gap-1 text-sm ${
+                            isFirst && making.started ? 'text-accent' : 'text-text-muted'
+                          }`}>
                             <Clock size={14} />
                             {getRemainingTime(making)}
                           </div>
@@ -186,7 +198,11 @@ export default function Kitchen() {
                           </div>
                           <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-gradient-to-r from-accent to-warning transition-all duration-100"
+                              className={`h-full transition-all duration-100 ${
+                                isFirst && making.started 
+                                  ? 'bg-gradient-to-r from-accent to-warning' 
+                                  : 'bg-gray-300'
+                              }`}
                               style={{ width: `${making.progress}%` }}
                             />
                           </div>
